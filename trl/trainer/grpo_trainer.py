@@ -562,6 +562,30 @@ class GRPOTrainer(Trainer):
             if is_peft_model(unwrapped_model):
                 unwrapped_model.unmerge_adapter()
 
+    def get_ref_model_inference_func(self):
+        def _ref_model_inference_func(inputs: list[str]):
+            prompts = [{"prompt": x} for x in inputs]
+            prompts_text = [maybe_apply_chat_template(example, self.processing_class)["prompt"] for example in prompts]
+            prompt_inputs = self.processing_class(
+                prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
+            )
+            prompt_inputs = super()._prepare_inputs(prompt_inputs)
+            prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
+            with torch.inference_mode():
+                with self.accelerator.unwrap_model(self.model).disable_adapter() as unwrapped_model:
+                    prompt_completion_ids = unwrapped_model.generate(
+                        prompt_ids, attention_mask=prompt_mask
+                    )
+
+            # Compute prompt length and extract completion ids
+            prompt_length = prompt_ids.size(1)
+
+            completion_ids = prompt_completion_ids[:, prompt_length:]
+            completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
+            return completions_text
+
+        return _ref_model_inference_func
+
     @profiling_decorator
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
         device = self.accelerator.device
@@ -680,6 +704,7 @@ class GRPOTrainer(Trainer):
                 # Repeat all input columns (but "prompt" and "completion") to match the number of generations
                 keys = [key for key in inputs[0] if key not in ["prompt", "completion"]]
                 reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
+                reward_kwargs["ref_model_inference_func"] = self.get_ref_model_inference_func()
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
