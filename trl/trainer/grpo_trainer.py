@@ -659,11 +659,12 @@ class GRPOTrainer(Trainer):
             prompt_inputs = self.processing_class(
                 prompts_text, return_tensors="pt", padding=True, padding_side="left", add_special_tokens=False
             )
-            prompt_inputs = super()._prepare_inputs(prompt_inputs)
             prompt_ids, prompt_mask = prompt_inputs["input_ids"], prompt_inputs["attention_mask"]
+            prompt_ids = prompt_ids.to(self.model.device)
+            prompt_mask = prompt_mask.to(self.model.device)
             with torch.inference_mode():
-                with self.accelerator.unwrap_model(self.model).disable_adapter() as unwrapped_model:
-                    prompt_completion_ids = unwrapped_model.generate(
+                with self.accelerator.unwrap_model(self.model).disable_adapter():
+                    prompt_completion_ids = self.model.generate(
                         prompt_ids, attention_mask=prompt_mask
                     )
 
