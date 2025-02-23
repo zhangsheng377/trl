@@ -675,7 +675,9 @@ class GRPOTrainer(Trainer):
             completions_text = self.processing_class.batch_decode(completion_ids, skip_special_tokens=True)
             return completions_text
 
-        return _ref_model_inference_func
+        if is_peft_model(self.model):
+            return _ref_model_inference_func
+        return None
 
     @profiling_decorator
     def _prepare_inputs(self, inputs: dict[str, Union[torch.Tensor, Any]]) -> dict[str, Union[torch.Tensor, Any]]:
