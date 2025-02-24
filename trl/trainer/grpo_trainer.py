@@ -823,6 +823,7 @@ class GRPOTrainer(Trainer):
                 keys = [key for key in inputs[0] if key not in ["prompt", "completion"]]
                 reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
                 reward_kwargs["ref_model_inference_func"] = self.get_ref_model_inference_func()
+                reward_kwargs["completion_ids"] = completion_ids
                 output_reward_func = reward_func(prompts=prompts, completions=completions, **reward_kwargs)
                 rewards_per_func[:, i] = torch.tensor(output_reward_func, dtype=torch.float32, device=device)
 
